@@ -1,80 +1,85 @@
-import { ActivityType } from 'discord.js'
-import { Client } from 'discordx'
+import {ActivityType} from 'discord.js'
+import {Client} from 'discordx'
 
-import { generalConfig } from '@/configs'
-import { Discord, Injectable, Once, Schedule } from '@/decorators'
-import { Data } from '@/entities'
-import { Database, Logger, Scheduler, Store } from '@/services'
-import { resolveDependency, syncAllGuilds } from '@/utils/functions'
+import {generalConfig} from '@/configs'
+import {Discord, Injectable, Once, Schedule} from '@/decorators'
+import {Data} from '@/entities'
+import {BlockchainMonitor, Database, Logger, Scheduler, Store} from '@/services'
+import {resolveDependency, syncAllGuilds} from '@/utils/functions'
 
 @Discord()
 @Injectable()
 export default class ReadyEvent {
 
-	constructor(
-		private db: Database,
-		private logger: Logger,
-		private scheduler: Scheduler,
-		private store: Store
-	) {}
+    constructor(
+        private db: Database,
+        private logger: Logger,
+        private scheduler: Scheduler,
+        private store: Store,
+        private blockchainMonitor: BlockchainMonitor,
+    ) {
+    }
 
-	private activityIndex = 0
+    private activityIndex = 0
 
-	@Once('ready')
-	async readyHandler([client]: [Client]) {
-		// make sure all guilds are cached
-		await client.guilds.fetch()
+    @Once('ready')
+    async readyHandler([client]: [Client]) {
+        // make sure all guilds are cached
+        await client.guilds.fetch()
 
-		// synchronize applications commands with Discord
-		await client.initApplicationCommands({
-			global: {
-				disable: {
-					delete: false,
-				},
-			},
-		})
+        // synchronize applications commands with Discord
+        await client.initApplicationCommands({
+            global: {
+                disable: {
+                    delete: false,
+                },
+            },
+        })
 
-		// change activity
-		await this.changeActivity()
+        // change activity
+        await this.changeActivity()
 
-		// update last startup time in the database
-		await this.db.get(Data).set('lastStartup', Date.now())
+        // update last startup time in the database
+        await this.db.get(Data).set('lastStartup', Date.now())
 
-		// start scheduled jobs
-		this.scheduler.startAllJobs()
+        // start scheduled jobs
+        this.scheduler.startAllJobs()
 
-		// log startup
-		await this.logger.logStartingConsole()
+        // log startup
+        await this.logger.logStartingConsole()
 
-		// synchronize guilds between discord and the database
-		await syncAllGuilds(client)
+        // blockchain monitor
+        this.blockchainMonitor.startMonitoring(client, '1223628717394231337');
 
-		// the bot is fully ready
-		this.store.update('ready', e => ({ ...e, bot: true }))
-	}
+        // synchronize guilds between discord and the database
+        await syncAllGuilds(client)
 
-	@Schedule('*/15 * * * * *') // each 15 seconds
-	async changeActivity() {
-		const ActivityTypeEnumString = ['PLAYING', 'STREAMING', 'LISTENING', 'WATCHING', 'CUSTOM', 'COMPETING'] // DO NOT CHANGE THE ORDER
+        // the bot is fully ready
+        this.store.update('ready', e => ({...e, bot: true}))
+    }
 
-		const client = await resolveDependency(Client)
-		const activity = generalConfig.activities[this.activityIndex]
+    @Schedule('*/15 * * * * *') // each 15 seconds
+    async changeActivity() {
+        const ActivityTypeEnumString = ['PLAYING', 'STREAMING', 'LISTENING', 'WATCHING', 'CUSTOM', 'COMPETING'] // DO NOT CHANGE THE ORDER
 
-		if (activity.type === 'STREAMING') { // streaming activity
-			client.user?.setStatus('online')
-			client.user?.setActivity(activity.text, {
-				url: 'https://www.twitch.tv/discord',
-				type: ActivityType.Streaming,
-			})
-		} else { // other activities
-			client.user?.setActivity(activity.text, {
-				type: ActivityTypeEnumString.indexOf(activity.type),
-			})
-		}
+        const client = await resolveDependency(Client)
+        const activity = generalConfig.activities[this.activityIndex]
 
-		this.activityIndex++
-		if (this.activityIndex === generalConfig.activities.length)
-			this.activityIndex = 0
-	}
+        if (activity.type === 'STREAMING') { // streaming activity
+            client.user?.setStatus('online')
+            client.user?.setActivity(activity.text, {
+                url: 'https://www.twitch.tv/discord',
+                type: ActivityType.Streaming,
+            })
+        } else { // other activities
+            client.user?.setActivity(activity.text, {
+                type: ActivityTypeEnumString.indexOf(activity.type),
+            })
+        }
+
+        this.activityIndex++
+        if (this.activityIndex === generalConfig.activities.length)
+            this.activityIndex = 0
+    }
 
 }

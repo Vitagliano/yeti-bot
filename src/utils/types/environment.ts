@@ -34,14 +34,14 @@ export function checkEnvironmentVariables() {
 		})
 	}
 
-	if (apiConfig.enabled === true) {
+	if (apiConfig.enabled) {
 		cleanEnv(process.env, {
 			API_PORT: num(),
 			API_ADMIN_TOKEN: str(),
 		})
 	}
 
-	if (generalConfig.automaticUploadImagesToImgur === true) {
+	if (generalConfig.automaticUploadImagesToImgur) {
 		cleanEnv(process.env, {
 			IMGUR_CLIENT_ID: str(),
 		})
